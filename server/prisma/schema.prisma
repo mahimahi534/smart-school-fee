@@ -1,0 +1,546 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  SUPER_ADMIN
+  SCHOOL_ADMIN
+  BRANCH_ADMIN
+  REGISTRAR
+  CASHIER
+  ACCOUNTANT
+  VIEWER
+}
+
+enum StudentStatus {
+  ACTIVE
+  INACTIVE
+  TRANSFERRED
+  GRADUATED
+  SUSPENDED
+}
+
+enum FeeCategory {
+  TUITION
+  REGISTRATION
+  EXAMINATION
+  TRANSPORT
+  UNIFORM
+  MEAL
+  FACILITY
+  OTHER
+}
+
+enum FeeFrequency {
+  ONE_TIME
+  TERM_BASED
+  MONTHLY
+  ANNUAL
+}
+
+enum InvoiceStatus {
+  DRAFT
+  ISSUED
+  PARTIALLY_PAID
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+enum PaymentMethod {
+  CASH
+  BANK_TRANSFER
+  CBE_BIRR
+  TELEBIRR
+  CHECK
+  OTHER
+}
+
+enum PaymentStatus {
+  COMPLETED
+  REVERSED
+  PENDING
+}
+
+enum NotificationType {
+  INFO
+  SUCCESS
+  WARNING
+  PAYMENT
+  INVOICE
+}
+
+model School {
+  id              String        @id @default(uuid())
+  code            String        @unique @db.VarChar(20) // e.g. "ABYSSINIA"
+  name            String        @db.VarChar(150)
+  nameAmharic     String?       @db.VarChar(150)
+  logoUrl         String?       @db.VarChar(500)
+  email           String?       @db.VarChar(100)
+  phone           String?       @db.VarChar(50)
+  address         String?       @db.VarChar(255)
+  city            String?       @db.VarChar(100)
+  currency        String        @default("ETB") @db.VarChar(10)
+  studentIdPrefix String        @default("STU") @db.VarChar(10)
+  invoicePrefix   String        @default("INV") @db.VarChar(10)
+  receiptPrefix   String        @default("REC") @db.VarChar(10)
+  isActive        Boolean       @default(true)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  branches        Branch[]
+  users           User[]
+  academicYears   AcademicYear[]
+  feeStructures   FeeStructure[]
+  students        Student[]
+  invoices        Invoice[]
+  payments        Payment[]
+  auditLogs       AuditLog[]
+  notifications   InAppNotification[]
+  settings        SystemSetting[]
+
+  @@map("schools")
+}
+
+model Branch {
+  id           String        @id @default(uuid())
+  schoolId     String
+  code         String        @db.VarChar(30)
+  name         String        @db.VarChar(150)
+  nameAmharic  String?       @db.VarChar(150)
+  phone        String?       @db.VarChar(50)
+  email        String?       @db.VarChar(100)
+  address      String?       @db.VarChar(255)
+  city         String?       @db.VarChar(100)
+  isMain       Boolean       @default(false)
+  isActive     Boolean       @default(true)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  school       School        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  users        User[]
+  classSections ClassSection[]
+  students     Student[]
+  invoices     Invoice[]
+  payments     Payment[]
+  auditLogs    AuditLog[]
+
+  @@unique([schoolId, code])
+  @@map("branches")
+}
+
+model User {
+  id             String        @id @default(uuid())
+  schoolId       String?
+  branchId       String?
+  email          String        @unique @db.VarChar(150)
+  passwordHash   String        @db.VarChar(255)
+  fullName       String        @db.VarChar(100)
+  fullNameAmharic String?      @db.VarChar(100)
+  phone          String?       @db.VarChar(50)
+  role           Role          @default(VIEWER)
+  isActive       Boolean       @default(true)
+  lastLoginAt    DateTime?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  school         School?       @relation(fields: [schoolId], references: [id], onDelete: SetNull)
+  branch         Branch?       @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  refreshTokens  RefreshToken[]
+  paymentsRecorded Payment[]   @relation("CashierPayments")
+  reversals      PaymentReversal[]
+  auditLogs      AuditLog[]
+  notifications  InAppNotification[]
+
+  @@index([schoolId])
+  @@index([branchId])
+  @@index([role])
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique @db.VarChar(500)
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("refresh_tokens")
+}
+
+model AcademicYear {
+  id          String        @id @default(uuid())
+  schoolId    String
+  name        String        @db.VarChar(50) // e.g. "2026/2027" or "2019 E.C."
+  startDate   DateTime      @db.Date
+  endDate     DateTime      @db.Date
+  isCurrent   Boolean       @default(false)
+  isArchived  Boolean       @default(false)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  school      School        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  terms       AcademicTerm[]
+  enrollments Enrollment[]
+  feeStructures FeeStructure[]
+  invoices    Invoice[]
+
+  @@unique([schoolId, name])
+  @@map("academic_years")
+}
+
+model AcademicTerm {
+  id             String        @id @default(uuid())
+  academicYearId String
+  name           String        @db.VarChar(50) // e.g. "Term 1", "Semester 1", "Quarter 1"
+  nameAmharic    String?       @db.VarChar(50)
+  startDate      DateTime      @db.Date
+  endDate        DateTime      @db.Date
+  isCurrent      Boolean       @default(false)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  academicYear   AcademicYear  @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  feeStructures  FeeStructure[]
+  invoices       Invoice[]
+
+  @@unique([academicYearId, name])
+  @@map("academic_terms")
+}
+
+model Grade {
+  id          String         @id @default(uuid())
+  schoolId    String
+  name        String         @db.VarChar(50) // e.g. "Grade 1", "KG 1", "Grade 9"
+  nameAmharic String?        @db.VarChar(50)
+  levelOrder  Int            @default(1)
+  description String?        @db.VarChar(255)
+  isActive    Boolean        @default(true)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  classSections ClassSection[]
+  feeStructures FeeStructure[]
+
+  @@unique([schoolId, name])
+  @@map("grades")
+}
+
+model ClassSection {
+  id          String        @id @default(uuid())
+  gradeId     String
+  branchId    String
+  name        String        @db.VarChar(50) // e.g. "Section A", "1-A", "Section Blue"
+  capacity    Int           @default(40)
+  roomNumber  String?       @db.VarChar(20)
+  isActive    Boolean       @default(true)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+
+  grade       Grade         @relation(fields: [gradeId], references: [id], onDelete: Cascade)
+  branch      Branch        @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  enrollments Enrollment[]
+
+  @@unique([gradeId, branchId, name])
+  @@map("class_sections")
+}
+
+model Student {
+  id              String        @id @default(uuid())
+  schoolId        String
+  branchId        String
+  studentIdNumber String        @db.VarChar(50) // Formatted, e.g. "ABY-0001"
+  sequenceNumber  Int           // Sequential for safe concurrent generation
+  firstName       String        @db.VarChar(60)
+  middleName      String?       @db.VarChar(60)
+  lastName        String        @db.VarChar(60)
+  firstNameAmharic String?      @db.VarChar(60)
+  middleNameAmharic String?     @db.VarChar(60)
+  lastNameAmharic String?       @db.VarChar(60)
+  gender          String        @db.VarChar(10) // Male, Female
+  dateOfBirth     DateTime?     @db.Date
+  status          StudentStatus @default(ACTIVE)
+  admissionDate   DateTime      @default(now()) @db.Date
+  photoUrl        String?       @db.VarChar(500)
+  address         String?       @db.VarChar(255)
+  city            String?       @db.VarChar(100)
+  emergencyPhone  String?       @db.VarChar(50)
+  medicalNotes    String?       @db.Text
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  school          School        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  branch          Branch        @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  guardians       Guardian[]
+  enrollments     Enrollment[]
+  invoices        Invoice[]
+  payments        Payment[]
+
+  @@unique([schoolId, studentIdNumber])
+  @@index([schoolId, branchId])
+  @@index([status])
+  @@map("students")
+}
+
+model Guardian {
+  id          String   @id @default(uuid())
+  studentId   String
+  fullName    String   @db.VarChar(120)
+  fullNameAmharic String? @db.VarChar(120)
+  relation    String   @db.VarChar(50) // Father, Mother, Guardian
+  phone       String   @db.VarChar(50)
+  altPhone    String?  @db.VarChar(50)
+  email       String?  @db.VarChar(120)
+  occupation  String?  @db.VarChar(100)
+  isPrimary   Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  student     Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([studentId])
+  @@map("guardians")
+}
+
+model Enrollment {
+  id             String        @id @default(uuid())
+  studentId      String
+  academicYearId String
+  classSectionId String
+  enrollmentDate DateTime      @default(now()) @db.Date
+  status         StudentStatus @default(ACTIVE)
+  remarks        String?       @db.VarChar(255)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  student        Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  academicYear   AcademicYear  @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  classSection   ClassSection  @relation(fields: [classSectionId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, academicYearId])
+  @@index([classSectionId])
+  @@map("enrollments")
+}
+
+model FeeStructure {
+  id             String        @id @default(uuid())
+  schoolId       String
+  branchId       String?       // null means applies to all branches in the school
+  academicYearId String
+  academicTermId String?       // null means applies to the full academic year
+  gradeId        String?       // null means applies to all grades
+  category       FeeCategory   @default(TUITION)
+  name           String        @db.VarChar(120) // e.g. "Term 1 Tuition Grade 1-4"
+  nameAmharic    String?       @db.VarChar(120)
+  amount         Decimal       @db.Decimal(12, 2)
+  frequency      FeeFrequency  @default(TERM_BASED)
+  dueDate        DateTime?     @db.Date
+  description    String?       @db.VarChar(255)
+  isActive       Boolean       @default(true)
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  school         School        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  academicYear   AcademicYear  @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  academicTerm   AcademicTerm? @relation(fields: [academicTermId], references: [id], onDelete: SetNull)
+  grade          Grade?        @relation(fields: [gradeId], references: [id], onDelete: SetNull)
+  invoiceItems   InvoiceItem[]
+
+  @@index([schoolId, academicYearId])
+  @@index([category])
+  @@map("fee_structures")
+}
+
+model Invoice {
+  id              String        @id @default(uuid())
+  schoolId        String
+  branchId        String
+  studentId       String
+  academicYearId  String
+  academicTermId  String?
+  invoiceNumber   String        @db.VarChar(50) // Sequential format e.g. "INV-2026-0001"
+  sequenceNumber  Int
+  issueDate       DateTime      @default(now()) @db.Date
+  dueDate         DateTime      @db.Date
+  subtotal        Decimal       @default(0.00) @db.Decimal(12, 2)
+  discountAmount  Decimal       @default(0.00) @db.Decimal(12, 2)
+  totalAmount     Decimal       @default(0.00) @db.Decimal(12, 2)
+  paidAmount      Decimal       @default(0.00) @db.Decimal(12, 2)
+  balanceAmount   Decimal       @default(0.00) @db.Decimal(12, 2)
+  status          InvoiceStatus @default(ISSUED)
+  notes           String?       @db.Text
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  school          School        @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  branch          Branch        @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  student         Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  academicYear    AcademicYear  @relation(fields: [academicYearId], references: [id], onDelete: Cascade)
+  academicTerm    AcademicTerm? @relation(fields: [academicTermId], references: [id], onDelete: SetNull)
+  items           InvoiceItem[]
+  payments        Payment[]
+  allocations     PaymentAllocation[]
+
+  @@unique([schoolId, invoiceNumber])
+  @@index([studentId])
+  @@index([status])
+  @@index([branchId])
+  @@index([academicYearId])
+  @@map("invoices")
+}
+
+model InvoiceItem {
+  id              String         @id @default(uuid())
+  invoiceId       String
+  feeStructureId  String?
+  feeName         String         @db.VarChar(120)
+  feeNameAmharic  String?        @db.VarChar(120)
+  quantity        Int            @default(1)
+  unitAmount      Decimal        @db.Decimal(12, 2)
+  discountAmount  Decimal        @default(0.00) @db.Decimal(12, 2)
+  totalAmount     Decimal        @db.Decimal(12, 2)
+  paidAmount      Decimal        @default(0.00) @db.Decimal(12, 2)
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+
+  invoice         Invoice        @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  feeStructure    FeeStructure?  @relation(fields: [feeStructureId], references: [id], onDelete: SetNull)
+  allocations     PaymentAllocation[]
+
+  @@index([invoiceId])
+  @@map("invoice_items")
+}
+
+model Payment {
+  id              String            @id @default(uuid())
+  schoolId        String
+  branchId        String
+  studentId       String
+  invoiceId       String
+  receiptNumber   String            @db.VarChar(50) // Sequential format e.g. "REC-2026-0001"
+  sequenceNumber  Int
+  amount          Decimal           @db.Decimal(12, 2)
+  paymentMethod   PaymentMethod     @default(CASH)
+  referenceNumber String?           @db.VarChar(100) // Bank slip no, Telebirr txn ID, check number
+  paymentDate     DateTime          @default(now())
+  cashierId       String
+  status          PaymentStatus     @default(COMPLETED)
+  idempotencyKey  String?           @unique @db.VarChar(100)
+  notes           String?           @db.Text
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+
+  school          School            @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  branch          Branch            @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  student         Student           @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  invoice         Invoice           @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  cashier         User              @relation("CashierPayments", fields: [cashierId], references: [id])
+  allocations     PaymentAllocation[]
+  reversal        PaymentReversal?
+
+  @@unique([schoolId, receiptNumber])
+  @@index([schoolId, branchId])
+  @@index([studentId])
+  @@index([invoiceId])
+  @@index([cashierId])
+  @@index([status])
+  @@index([paymentDate])
+  @@map("payments")
+}
+
+model PaymentAllocation {
+  id            String       @id @default(uuid())
+  paymentId     String
+  invoiceId     String
+  invoiceItemId String?
+  amount        Decimal      @db.Decimal(12, 2)
+  createdAt     DateTime     @default(now())
+
+  payment       Payment      @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  invoice       Invoice      @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  invoiceItem   InvoiceItem? @relation(fields: [invoiceItemId], references: [id], onDelete: SetNull)
+
+  @@index([paymentId])
+  @@index([invoiceId])
+  @@map("payment_allocations")
+}
+
+model PaymentReversal {
+  id          String   @id @default(uuid())
+  paymentId   String   @unique
+  reversedById String
+  reason      String   @db.Text
+  reversedAt  DateTime @default(now())
+
+  payment     Payment  @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+  reversedBy  User     @relation(fields: [reversedById], references: [id])
+
+  @@map("payment_reversals")
+}
+
+model InAppNotification {
+  id        String           @id @default(uuid())
+  schoolId  String
+  userId    String?          // null means for all authorized school staff
+  title     String           @db.VarChar(150)
+  message   String           @db.Text
+  type      NotificationType @default(INFO)
+  isRead    Boolean          @default(false)
+  link      String?          @db.VarChar(255)
+  createdAt DateTime         @default(now())
+
+  school    School           @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+  user      User?            @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([schoolId, userId])
+  @@index([isRead])
+  @@map("in_app_notifications")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid())
+  schoolId   String?
+  branchId   String?
+  actorId    String?
+  actorEmail String   @db.VarChar(150)
+  actorName  String   @db.VarChar(100)
+  actorRole  Role
+  action     String   @db.VarChar(100) // e.g. "STUDENT_REGISTERED", "PAYMENT_RECORDED", "PAYMENT_REVERSED"
+  entityType String   @db.VarChar(50)  // e.g. "Student", "Payment", "Invoice"
+  entityId   String?  @db.VarChar(100)
+  details    String?  @db.Text        // JSON string of changes
+  ipAddress  String?  @db.VarChar(50)
+  createdAt  DateTime @default(now())
+
+  school     School?  @relation(fields: [schoolId], references: [id], onDelete: SetNull)
+  branch     Branch?  @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  actor      User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+
+  @@index([schoolId, branchId])
+  @@index([action])
+  @@index([entityType])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model SystemSetting {
+  id        String   @id @default(uuid())
+  schoolId  String
+  key       String   @db.VarChar(100)
+  value     String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  school    School   @relation(fields: [schoolId], references: [id], onDelete: Cascade)
+
+  @@unique([schoolId, key])
+  @@map("system_settings")
+}

@@ -1,0 +1,31 @@
+{
+  "name": "smart-school-fee",
+  "version": "1.0.0",
+  "description": "Smart School Fee Management System - Complete Online Financial & Fee Management Platform for Schools in Ethiopia",
+  "private": true,
+  "scripts": {
+    "install:all": "npm install && cd server && npm install && cd ../client && npm install",
+    "dev:server": "cd server && npm run dev",
+    "dev:client": "cd client && npm run dev",
+    "build:server": "cd server && npm run build",
+    "build:client": "cd client && npm run build",
+    "build": "npm run build:server && npm run build:client",
+    "start": "cd server && npm start",
+    "test:server": "cd server && npm test",
+    "test": "npm run test:server",
+    "prisma:generate": "cd server && npx prisma generate",
+    "prisma:migrate": "cd server && npx prisma migrate dev",
+    "prisma:seed": "cd server && npx prisma db seed"
+  },
+  "keywords": [
+    "school-fee-management",
+    "ethiopia",
+    "smart-school-fee",
+    "prisma",
+    "mysql",
+    "react",
+    "express"
+  ],
+  "author": "Smart School Fee Team",
+  "license": "UNLICENSED"
+}
